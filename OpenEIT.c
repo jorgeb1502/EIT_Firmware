@@ -1,7 +1,6 @@
 /**********************************
-
 Author: Jean Rintoul , Mindseye Biomedical LLC Copyright 2018
-
+a
 This software is modified from an original Analog Devices example, 
 It's original copyright notice is included below. 
 
@@ -104,7 +103,7 @@ ADI_UART_RESULT_TYPE    uart_Init_Simple        (void);
 ADI_UART_RESULT_TYPE    uart_UnInit             (void);
 void                    delay                   (uint32_t counts);
 extern int32_t          adi_initpinmux          (void);
-void                    multiplex_adg732        (ADI_AFE_DEV_HANDLE  hDevice, const uint32_t *const seq,uint32_t n_el);
+void                    multiplex_adg732        (ADI_AFE_DEV_HANDLE  hDevice, const uint32_t *const seq,uint32_t n_el, int16_t mode);
 void                    time_series             (ADI_AFE_DEV_HANDLE  hDevice, const uint32_t *const seq);
 void                    bioimpedance_spectroscopy     (ADI_AFE_DEV_HANDLE  hDevice, const uint32_t *const seq);
 void                    init_GPIO_ports         (void);
@@ -114,7 +113,7 @@ void                    init_mode_bis             (void);
 void                    init_mode_bipolar       (void);
 void                    time_series_bipolar(ADI_AFE_DEV_HANDLE  hDevice, const uint32_t *const seq);
 fixed32_t               calculate_bipolar_magnitude     (q31_t magnitude_rcal, q31_t magnitude_z);
-void                    bipolar_adg732(ADI_AFE_DEV_HANDLE  hDevice, const uint32_t *const seq,uint32_t n_el);
+void                    bipolar_adg732(ADI_AFE_DEV_HANDLE  hDevice, const uint32_t *const seq,uint32_t n_el, int16_t mode);
 
 int main(void)
 {
@@ -246,7 +245,17 @@ int main(void)
       mode = 7;
       init_mode_bipolar();
       adi_UART_BufFlush(hUartDevice);
-    }                
+    } 
+    else if (RxBuffer[0] == 'h'  && RxBuffer[1] == '\n' && mode !=5)              
+    {
+      mode = 8;
+      // Reset everything.  
+      adi_GPIO_UnInit();  
+      adi_AFE_UnInit(hDevice);
+      PRINT("mode 8: 16 electrode adjacent imaging\n");
+      init_mode_tetramux();
+      adi_UART_BufFlush(hUartDevice);
+    }
     else {
       // clears out UART buffer in case user presses random stuff a few times. 
       adi_UART_BufFlush(hUartDevice);
@@ -261,25 +270,30 @@ int main(void)
     else if (mode == 3) {  // 8 electrode imaging
       uint32_t n_el = 8;
       /* Perform the multiplex adg732 Tetrapolar Impedance measurements */
-      multiplex_adg732(hDevice, seq_afe_fast_meas_4wire, n_el);
+      multiplex_adg732(hDevice, seq_afe_fast_meas_4wire, n_el, mode);
     }
     else if (mode == 4) {  // 16 electrode imaging
       uint32_t n_el = 16;
       /* Perform the multiplex adg732 Tetrapolar Impedance measurements */
-      multiplex_adg732(hDevice, seq_afe_fast_meas_4wire, n_el);
+      multiplex_adg732(hDevice, seq_afe_fast_meas_4wire, n_el, mode);
     }    
     else if (mode == 5) {  // 32 electrode imaging
       uint32_t n_el = 32;
       /* Perform the multiplex adg732 Tetrapolar Impedance measurements */
-      multiplex_adg732(hDevice, seq_afe_fast_meas_4wire, n_el);
+      multiplex_adg732(hDevice, seq_afe_fast_meas_4wire, n_el, mode);
     }    
     else if (mode == 6) {
       uint32_t n_el = 16;
-      bipolar_adg732(hDevice, seq_fast_2wire_bipolar, n_el);
+      bipolar_adg732(hDevice, seq_fast_2wire_bipolar, n_el, mode);
     }
     else if (mode == 7) {
       time_series_bipolar(hDevice, seq_fast_2wire_bipolar);
     }
+    else if (mode == 8) {  // 32 electrode imaging
+      uint32_t n_el = 16;
+      /* Perform the multiplex adg732 Tetrapolar Impedance measurements */
+      multiplex_adg732(hDevice, seq_afe_fast_meas_4wire, n_el, mode);
+    } 
     else {
       PRINT("no mode chosen\n");
     }
@@ -815,20 +829,25 @@ void time_series(ADI_AFE_DEV_HANDLE  hDevice, const uint32_t *const seq) {
     Main code for the imaging function with 32 electrodes. 
   
 *****************************************************************************/
-void multiplex_adg732(ADI_AFE_DEV_HANDLE  hDevice, const uint32_t *const seq,uint32_t n_el) {
+void multiplex_adg732(ADI_AFE_DEV_HANDLE  hDevice, const uint32_t *const seq,uint32_t n_el, int16_t mode) {
   
    // int 32 of the sequence, no of measures based on the sequence entered. 
    // i.e. n_el if 8, 16, 32, we can pick which sequence. 
    //   32, 192, 896  
     uint32_t            numberofmeasures;
-    if (n_el == 8) {
+    if (mode == 3) {
       numberofmeasures = 32;
     }  
-    else if (n_el == 16) {
+    else if (mode == 4) {
       numberofmeasures = 192;
+      PRINT("number of measures is 0\n");
     }
-    else if (n_el == 32) {
+    else if (mode == 5) {
       numberofmeasures = 896;
+    }
+    else if (mode == 8) {
+      numberofmeasures = 208;
+      PRINT("tdss");
     }
     else {
       numberofmeasures = 928;
@@ -856,14 +875,17 @@ void multiplex_adg732(ADI_AFE_DEV_HANDLE  hDevice, const uint32_t *const seq,uin
       
       // This is where we select the electrode sequence. i.e. 8,16 or 32 adjacent or opposition.  
       int16_t* e;
-      if (n_el == 8) {
+      if (mode == 3) {
         e = (int16_t *)electrode_configuration_8_opposition[econf];
       }  
-      else if (n_el == 16) {
+      else if (mode == 4) {
         e = (int16_t *)electrode_configuration_16_opposition[econf];
       }
-      else if (n_el == 32) {
+      else if (mode == 5) {
         e = (int16_t *)electrode_configuration_32_opposition[econf];
+      }
+      else if (mode == 8) {
+        e = (int16_t *)electrode_configuration_16_adjacent[econf];
       }
       else {
         e = (int16_t *)electrode_configuration_32_adjacent[econf];
@@ -963,20 +985,25 @@ void multiplex_adg732(ADI_AFE_DEV_HANDLE  hDevice, const uint32_t *const seq,uin
     Main code for the imaging function bipolar measurements(not tetrapolar). 
   
 *****************************************************************************/
-void bipolar_adg732(ADI_AFE_DEV_HANDLE  hDevice, const uint32_t *const seq,uint32_t n_el) {
+void bipolar_adg732(ADI_AFE_DEV_HANDLE  hDevice, const uint32_t *const seq,uint32_t n_el, int16_t mode) {
   
    // int 32 of the sequence, no of measures based on the sequence entered. 
    // i.e. n_el if 8, 16, 32, we can pick which sequence. 
    //   32, 192, 896  
     uint32_t            numberofmeasures;
-    if (n_el == 8) {
+    if (mode == 3) {
       numberofmeasures = 32;
     }  
-    else if (n_el == 16) {
+    else if (mode == 4) {
       numberofmeasures = 192;
+      PRINT("number of measures is 0\n");
     }
-    else if (n_el == 32) {
+    else if (mode == 5) {
       numberofmeasures = 896;
+    }
+    else if (mode == 8) {
+      numberofmeasures = 208;
+      PRINT("tst\n");
     }
     else {
       numberofmeasures = 0;
@@ -1011,6 +1038,7 @@ void bipolar_adg732(ADI_AFE_DEV_HANDLE  hDevice, const uint32_t *const seq,uint3
       else {
         e = (int16_t *)electrode_configuration_32_opposition[econf];
       }
+      
       
       // M1,M2,M3,M4 = 1,2,4,5 
       // U4, A-, m1, position 3

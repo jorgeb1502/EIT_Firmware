@@ -46,7 +46,7 @@ extern "C" {
   
 #define NUMBEROFMEASURES                (896) 
 
-
+#define NO_MEASURES_16_ADJACENT         (208)
 #define NO_MEASURES_32_OPPOSITION       (896) 
 #define NO_MEASURES_16_OPPOSITION       (192) 
 #define NO_MEASURES_8_OPPOSITION        (32)   
